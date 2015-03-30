@@ -9,7 +9,6 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *out
   float *input_k = input + k*dim;
   float *output_k = output + k;
   int target_k = ((int)target[k])-1;
-  float input_target_k = input_k[target_k];
 
   int i_start = threadIdx.x;
   int i_end = dim;
@@ -22,7 +21,7 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *out
     float y = (i==target_k) ? 1.0 : -1.0;
     float z = 1 - input_k[i]*y;         
     if(z > 0)
-        buffer[threadIdx.x] += z
+        buffer[threadIdx.x] += z;
   }
   __syncthreads();
 
@@ -47,7 +46,6 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel(float *
   float *input_k = input + k*dim;
   float *gradInput_k = gradInput + k*dim;
   int target_k = ((int)target[k])-1;
-  float input_target_k = input_k[target_k];
   float g = (sizeaverage ? 1./((float)dim) : 1.);
 
   int i_start = threadIdx.x;
@@ -158,7 +156,7 @@ static int cunn_OneVsAllMultiMarginCriterion_updateGradInput(lua_State *L)
 
     THCudaTensor_fill(state, target, target_);
 
-    cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel<1> <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
+    cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
                                                                          THCudaTensor_data(state, input),
                                                                          THCudaTensor_data(state, target),
                                                                          1, gradInput->size[0],
@@ -172,7 +170,7 @@ static int cunn_OneVsAllMultiMarginCriterion_updateGradInput(lua_State *L)
     dim3 blocks(gradInput->size[0]);
     dim3 threads(LOGSOFTMAX_THREADS);
 
-    cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel<1> <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
+    cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
                                                                          THCudaTensor_data(state, input),
                                                                          THCudaTensor_data(state, target),
                                                                          gradInput->size[0], gradInput->size[1],
