@@ -2,7 +2,7 @@
 
 #define MULTIMARGIN_THREADS 128
 
-__global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *output, float *input, float *target, int nframe, int dim, int sizeaverage, float postiveWeight)
+__global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *output, float *input, float *target, int nframe, int dim, int sizeaverage, float positiveWeight)
 {
   __shared__ float buffer[MULTIMARGIN_THREADS];
   int k = blockIdx.x;
