@@ -22,7 +22,7 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *out
     float z = 1 - input_k[i]*y;         
     if(z > 0){
         float weight = (i==target_k) ? positiveWeight : 1.0;
-        buffer[threadIdx.x] += z;
+        buffer[threadIdx.x] += z*weight;
     }
   }
   __syncthreads();
