@@ -73,13 +73,13 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel(float *
   __syncthreads();
 
   // reduce
-  if (threadIdx.x == 0)
-  {
-    float gradInput_target_k = 0;
-    for (int i=0; i<blockDim.x; i++)
-      gradInput_target_k += buffer[i];
-    gradInput_k[target_k] = gradInput_target_k;
-  }
+  //if (threadIdx.x == 0)
+  //{
+   // float gradInput_target_k = 0;
+    //for (int i=0; i<blockDim.x; i++)
+     // gradInput_target_k += buffer[i];
+    //gradInput_k[target_k] = gradInput_target_k;
+  //}
 }
 
 static int cunn_OneVsAllMultiMarginCriterion_updateOutput(lua_State *L)
