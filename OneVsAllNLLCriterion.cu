@@ -1,10 +1,10 @@
 #include "utils.h"
 
-#define MULTIMARGIN_THREADS 128
+#define NLL_THREADS 128
 
-__global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *output, float *input, float *target, int nframe, int dim, int sizeaverage, float *positiveWeight)
+__global__ void cunn_OneVsAllNLLCriterion_updateOutput_kernel(float *output, float *input, float *target, int nframe, int dim, int sizeaverage, float *positiveWeight)
 {
-  __shared__ float buffer[MULTIMARGIN_THREADS];
+  __shared__ float buffer[NLL_THREADS];
   int k = blockIdx.x;
   float *input_k = input + k*dim;
   float *output_k = output + k;
@@ -17,13 +17,8 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *out
   buffer[threadIdx.x] = 0;
   for(int i = i_start; i < i_end; i += i_step)
   {
-
-    float y = (i==target_k) ? 1.0 : -1.0;
-    float z = 1 - input_k[i]*y;         
-    if(z > 0){
-        float weight = (i==target_k) ? positiveWeight[i] : 1.0;
-        buffer[threadIdx.x] += z*weight;
-    }
+    float z = (i==target_k) ?  -positiveWeight[i]*input_k[i] : input_k[i];
+    buffer[threadIdx.x] += z;        
   }
   __syncthreads();
 
@@ -41,9 +36,9 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel(float *out
   }
 }
 
-__global__ void cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel(float *gradInput, float *input, float *target, int nframe, int dim, int sizeaverage, float *positiveWeight)
+__global__ void cunn_OneVsAllNLLCriterion_updateGradInput_kernel(float *gradInput, float *input, float *target, int nframe, int dim, int sizeaverage, float *positiveWeight)
 {
- // __shared__ float buffer[MULTIMARGIN_THREADS];
+ // __shared__ float buffer[NLL_THREADS];
   int k = blockIdx.x;
   float *input_k = input + k*dim;
   float *gradInput_k = gradInput + k*dim;
@@ -57,18 +52,9 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel(float *
 //  buffer[threadIdx.x] = 0;
   for (int i=i_start; i<i_end; i+=i_step)
   {
-    float y = (i==target_k) ? 1.0 : -1.0;
-    float z = 1 - input_k[i]*y;
-
-    if(z > 0)
-    {
-      float weight = (i==target_k) ? positiveWeight[i] : 1.0;
-      float h =  -y*g*weight;
-      gradInput_k[i] = h;
-    }
-    else
-      gradInput_k[i] = 0;
-    }
+    float z = (i==target_k) ? -g*positiveWeight[i] : g;
+    gradInput_k[i] = z;      
+  }
 
   __syncthreads();
 
@@ -82,7 +68,7 @@ __global__ void cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel(float *
   //}
 }
 
-static int cunn_OneVsAllMultiMarginCriterion_updateOutput(lua_State *L)
+static int cunn_OneVsAllNLLCriterion_updateOutput(lua_State *L)
 {
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
@@ -98,11 +84,11 @@ static int cunn_OneVsAllMultiMarginCriterion_updateOutput(lua_State *L)
     THCudaStorage *target = THCudaStorage_newWithSize(state, 1);
     THCudaStorage *output = THCudaStorage_newWithSize(state, 1);
     dim3 blocks(1);
-    dim3 threads(MULTIMARGIN_THREADS);
+    dim3 threads(NLL_THREADS);
 
     THCudaStorage_fill(state, target, target_);
 
-    cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel <<<blocks,threads>>>(output->data,
+    cunn_OneVsAllNLLCriterion_updateOutput_kernel <<<blocks,threads>>>(output->data,
                                                                       THCudaTensor_data(state, input),
                                                                       target->data,
                                                                       1, input->size[0],
@@ -118,8 +104,8 @@ static int cunn_OneVsAllMultiMarginCriterion_updateOutput(lua_State *L)
     THCudaTensor *target = (THCudaTensor*)luaT_checkudata(L, 3, "torch.CudaTensor");
     THCudaTensor *output = THCudaTensor_newWithSize1d(state, input->size[0]);
     dim3 blocks(input->size[0]);
-    dim3 threads(MULTIMARGIN_THREADS);
-    cunn_OneVsAllMultiMarginCriterion_updateOutput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, output),
+    dim3 threads(NLL_THREADS);
+    cunn_OneVsAllNLLCriterion_updateOutput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, output),
                                                                       THCudaTensor_data(state, input),
                                                                       THCudaTensor_data(state, target),
                                                                       input->size[0], input->size[1],
@@ -143,7 +129,7 @@ static int cunn_OneVsAllMultiMarginCriterion_updateOutput(lua_State *L)
   return 1;
 }
 
-static int cunn_OneVsAllMultiMarginCriterion_updateGradInput(lua_State *L)
+static int cunn_OneVsAllNLLCriterion_updateGradInput(lua_State *L)
 {
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
@@ -166,7 +152,7 @@ static int cunn_OneVsAllMultiMarginCriterion_updateGradInput(lua_State *L)
 
     THCudaTensor_fill(state, target, target_);
 
-    cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
+    cunn_OneVsAllNLLCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
                                                                          THCudaTensor_data(state, input),
                                                                          THCudaTensor_data(state, target),
                                                                          1, gradInput->size[0],
@@ -180,7 +166,7 @@ static int cunn_OneVsAllMultiMarginCriterion_updateGradInput(lua_State *L)
     dim3 blocks(gradInput->size[0]);
     dim3 threads(LOGSOFTMAX_THREADS);
 
-    cunn_OneVsAllMultiMarginCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
+    cunn_OneVsAllNLLCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
                                                                          THCudaTensor_data(state, input),
                                                                          THCudaTensor_data(state, target),
                                                                          gradInput->size[0], gradInput->size[1],
@@ -196,15 +182,15 @@ static int cunn_OneVsAllMultiMarginCriterion_updateGradInput(lua_State *L)
   return 1;
 }
 
-static const struct luaL_Reg cunn_OneVsAllMultiMarginCriterion__ [] = {
-  {"OneVsAllMultiMarginCriterion_updateOutput", cunn_OneVsAllMultiMarginCriterion_updateOutput},
-  {"OneVsAllMultiMarginCriterion_updateGradInput", cunn_OneVsAllMultiMarginCriterion_updateGradInput},
+static const struct luaL_Reg cunn_OneVsAllNLLCriterion__ [] = {
+  {"OneVsAllNLLCriterion_updateOutput", cunn_OneVsAllNLLCriterion_updateOutput},
+  {"OneVsAllNLLCriterion_updateGradInput", cunn_OneVsAllNLLCriterion_updateGradInput},
   {NULL, NULL}
 };
 
-static void cunn_OneVsAllMultiMarginCriterion_init(lua_State *L)
+static void cunn_OneVsAllNLLCriterion_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
-  luaT_registeratname(L, cunn_OneVsAllMultiMarginCriterion__, "nn");
+  luaT_registeratname(L, cunn_OneVsAllNLLCriterion__, "nn");
   lua_pop(L,1);
 }
