@@ -40,7 +40,7 @@ __global__ void cunn_OneVsAllNLLCriterion_updateGradInput_kernel(float *gradInpu
 {
  // __shared__ float buffer[NLL_THREADS];
   int k = blockIdx.x;
-  float *input_k = input + k*dim;
+  //float *input_k = input + k*dim;
   float *gradInput_k = gradInput + k*dim;
   int target_k = ((int)target[k])-1;
   float g = (sizeaverage ? 1./((float)dim) : 1.);
