@@ -31,6 +31,7 @@
 #include "Sqrt.cu"
 #include "MultiMarginCriterion.cu"
 #include "OneVsAllMultiMarginCriterion.cu"
+#include "OneVsAllNLLCriterion.cu"
 #include "MSECriterion.cu"
 #include "DistKLDivCriterion.cu"
 #include "Threshold.cu"
@@ -70,6 +71,7 @@ int luaopen_libcunn(lua_State *L)
   cunn_SpatialAveragePooling_init(L);
   cunn_MultiMarginCriterion_init(L);
   cunn_OneVsAllMultiMarginCriterion_init(L);
+  cunn_OneVsAllNLLCriterion_init(L);
   cunn_Square_init(L);
   cunn_Sqrt_init(L);
   cunn_Threshold_init(L);
