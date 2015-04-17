@@ -1,7 +1,5 @@
 #include "utils.h"
 
-#define CUDA_MAX_THREADS 1024   // this is safe, in reality 256 is our limit
-
 /*
  * Description:
  *    this function maxpools an input 4D tensor along dimensions 2 and 3
@@ -189,6 +187,7 @@ static int cunn_SpatialMaxPooling_updateOutput(lua_State *L)
   float *output_data;
   float *input_data;
 
+  THAssert(THCudaTensor_checkGPU(state, 3, input, output, indices));
   luaL_argcheck(L, input->nDimension == 3 || input->nDimension == 4, 2, "3D or 4D (batch) tensor expected");
 
   if (input->nDimension == 3) {
@@ -216,9 +215,10 @@ static int cunn_SpatialMaxPooling_updateOutput(lua_State *L)
     dim3 threads(32,8);
 
     // run maxpool kernel
-    maxpool <<<blocks, threads>>> (input_data, output_data,
-                                   indices_data+nInputPlane*nOutputCols*nOutputRows, indices_data,
-                                   nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
+    maxpool <<<blocks, threads, 0, THCState_getCurrentStream(state)>>> (
+      input_data, output_data,
+      indices_data+nInputPlane*nOutputCols*nOutputRows, indices_data,
+      nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
   } else {
     long nInputCols = input->size[3];
     long nInputRows = input->size[2];
@@ -245,9 +245,10 @@ static int cunn_SpatialMaxPooling_updateOutput(lua_State *L)
     dim3 threads(32,8);
 
     // run maxpool kernel
-    maxpool <<<blocks, threads>>> (input_data, output_data,
-                                   indices_data+nbatch*nInputPlane*nOutputCols*nOutputRows, indices_data,
-                                   nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
+    maxpool <<<blocks, threads, 0, THCState_getCurrentStream(state)>>> (
+      input_data, output_data,
+      indices_data+nbatch*nInputPlane*nOutputCols*nOutputRows, indices_data,
+      nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
   }
 
   // clean
@@ -256,7 +257,7 @@ static int cunn_SpatialMaxPooling_updateOutput(lua_State *L)
   // check for errors
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    printf("error in SpatialMaxsampling.updateOutput: %s\n", cudaGetErrorString(err));
+    printf("error in SpatialMaxPooling.updateOutput: %s\n", cudaGetErrorString(err));
     THError("aborting");
   }
   return 1;
@@ -279,6 +280,8 @@ static int cunn_SpatialMaxPooling_updateGradInput(lua_State *L)
   float *indices_data;
   float *gradInput_data;
   float *gradOutput_data;
+
+  THAssert(THCudaTensor_checkGPU(state, 4, input, gradOutput, indices, gradInput));
 
   input = THCudaTensor_newContiguous(state, input);
   gradOutput = THCudaTensor_newContiguous(state, gradOutput);
@@ -306,16 +309,18 @@ static int cunn_SpatialMaxPooling_updateGradInput(lua_State *L)
     if(atomic)
     {
       // run updateGradInput kernel, accumulate gradients atomically
-      atomicmaxgradinput <<<blocks, threads>>> (gradInput_data, gradOutput_data,
-                                          indices_data+nInputPlane*nOutputCols*nOutputRows, indices_data,
-                                          nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
+      atomicmaxgradinput <<<blocks, threads, 0, THCState_getCurrentStream(state)>>> (
+        gradInput_data, gradOutput_data,
+        indices_data+nInputPlane*nOutputCols*nOutputRows, indices_data,
+        nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
     }
     else
     {
       // run updateGradInput kernel
-      atomicmaxgradinput <<<blocks, threads>>> (gradInput_data, gradOutput_data,
-                                          indices_data+nInputPlane*nOutputCols*nOutputRows, indices_data,
-                                          nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
+      atomicmaxgradinput <<<blocks, threads, 0, THCState_getCurrentStream(state)>>> (
+        gradInput_data, gradOutput_data,
+        indices_data+nInputPlane*nOutputCols*nOutputRows, indices_data,
+        nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
     }
   } else {
     long nInputCols = input->size[3];
@@ -341,23 +346,25 @@ static int cunn_SpatialMaxPooling_updateGradInput(lua_State *L)
     if(atomic)
     {
       // run updateGradInput kernel, accumulate gradients atomically
-      atomicmaxgradinput <<<blocks, threads>>> (gradInput_data, gradOutput_data,
-                                          indices_data+nbatch*nInputPlane*nOutputCols*nOutputRows, indices_data,
-                                          nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
+      atomicmaxgradinput <<<blocks, threads, 0, THCState_getCurrentStream(state)>>> (
+        gradInput_data, gradOutput_data,
+        indices_data+nbatch*nInputPlane*nOutputCols*nOutputRows, indices_data,
+        nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
     }
     else
     {
       // run updateGradInput kernel, accumulate gradients atomically
-      maxgradinput <<<blocks, threads>>> (gradInput_data, gradOutput_data,
-                                          indices_data+nbatch*nInputPlane*nOutputCols*nOutputRows, indices_data,
-                                          nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
+      maxgradinput <<<blocks, threads, 0, THCState_getCurrentStream(state)>>> (
+        gradInput_data, gradOutput_data,
+        indices_data+nbatch*nInputPlane*nOutputCols*nOutputRows, indices_data,
+        nInputPlane, nInputRows, nInputCols, kH, kW, dH, dW);
     }
   }
 
   // check for errors
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    printf("error in SpatialMaxsampling.updateGradInput: %s\n", cudaGetErrorString(err));
+    printf("error in SpatialMaxPooling.updateGradInput: %s\n", cudaGetErrorString(err));
     THError("aborting");
   }
   // clean
@@ -379,5 +386,3 @@ static void cunn_SpatialMaxPooling_init(lua_State *L)
   luaT_registeratname(L, cunn_SpatialMaxPooling__, "nn");
   lua_pop(L,1);
 }
-
-#undef CUDA_MAX_THREADS
