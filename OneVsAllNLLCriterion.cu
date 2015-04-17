@@ -17,7 +17,7 @@ __global__ void cunn_OneVsAllNLLCriterion_updateOutput_kernel(float *output, flo
   buffer[threadIdx.x] = 0;
   for(int i = i_start; i < i_end; i += i_step)
   {
-    float z = (i==target_k) ?  -positiveWeight[i]*input_k[i] : input_k[i];
+    float z = (i==target_k) ?  (-positiveWeight[i]*input_k[i]) : input_k[i];
     buffer[threadIdx.x] += z;        
   }
   __syncthreads();
@@ -43,7 +43,7 @@ __global__ void cunn_OneVsAllNLLCriterion_updateGradInput_kernel(float *gradInpu
   //float *input_k = input + k*dim;
   float *gradInput_k = gradInput + k*dim;
   int target_k = ((int)target[k])-1;
-  float g = (sizeaverage ? 1./((float)dim) : 1.);
+  float g = (sizeaverage ? 1./((float)nframe) : 1.);
 
   int i_start = threadIdx.x;
   int i_end = dim;
