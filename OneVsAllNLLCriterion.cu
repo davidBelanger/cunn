@@ -30,7 +30,7 @@ __global__ void cunn_OneVsAllNLLCriterion_updateOutput_kernel(float *output, flo
       sum += buffer[i];
 
     if(sizeaverage)
-      *output_k = sum/dim;
+      *output_k = sum/nframe;
     else
       *output_k = sum;
   }
