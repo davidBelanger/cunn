@@ -43,7 +43,7 @@ __global__ void cunn_OneVsAllNLLCriterion_updateGradInput_kernel(float *gradInpu
   //float *input_k = input + k*dim;
   float *gradInput_k = gradInput + k*dim;
   int target_k = ((int)target[k])-1;
-  float g = (sizeaverage ? 1./((float)nframe) : 1.);
+  float g = (sizeaverage ? -1./((float)nframe) : -1.);
 
   int i_start = threadIdx.x;
   int i_end = dim;
