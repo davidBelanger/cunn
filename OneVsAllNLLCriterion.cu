@@ -43,7 +43,7 @@ __global__ void cunn_OneVsAllNLLCriterion_updateGradInput_kernel(float *gradInpu
   //float *input_k = input + k*dim;
   float *gradInput_k = gradInput + k*dim;
   int target_k = ((int)target[k])-1;
-  float g = (sizeaverage ? -1./((float)nframe) : -1.);
+  float g = (sizeaverage ? 1./((float)nframe) : 1.);
 
   int i_start = threadIdx.x;
   int i_end = dim;
@@ -148,7 +148,7 @@ static int cunn_OneVsAllNLLCriterion_updateGradInput(lua_State *L)
     float target_ = luaL_checknumber(L, 3);
     THCudaTensor *target = THCudaTensor_newWithSize1d(state, 1);
     dim3 blocks(1);
-    dim3 threads(LOGSOFTMAX_THREADS);
+    dim3 threads(NLL_THREADS);
 
     THCudaTensor_fill(state, target, target_);
 
@@ -164,7 +164,7 @@ static int cunn_OneVsAllNLLCriterion_updateGradInput(lua_State *L)
   {
     THCudaTensor *target = (THCudaTensor*)luaT_checkudata(L, 3, "torch.CudaTensor");
     dim3 blocks(gradInput->size[0]);
-    dim3 threads(LOGSOFTMAX_THREADS);
+    dim3 threads(NLL_THREADS);
 
     cunn_OneVsAllNLLCriterion_updateGradInput_kernel <<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
                                                                          THCudaTensor_data(state, input),
