@@ -131,6 +131,15 @@ static int cunn_SoftMax_updateOutput(lua_State *L)
                                              THCudaTensor_data(state, input),
                                              input->size[0], input->size[1]);
   }
+  else if(input->nDimension == 3)
+  {
+    dim3 blocks(input->size[0]*input->size[1]);
+    dim3 threads(SOFTMAX_THREADS);
+    cunn_SoftMax_updateOutput_kernel<<<blocks,threads,
+      0, THCState_getCurrentStream(state)>>>(THCudaTensor_data(state, output),
+                                             THCudaTensor_data(state, input),
+                                             input->size[0]*input->size[1], input->size[2]);
+  }
   else
     THError("vector or matrix expected");
 
@@ -188,6 +197,17 @@ static int cunn_SoftMax_updateGradInput(lua_State *L)
                                              THCudaTensor_data(state, output),
                                              THCudaTensor_data(state, gradOutput),
                                              gradInput->size[0], gradInput->size[1]);
+  }
+  else if(gradInput->nDimension == 3)
+  {
+    dim3 blocks(gradInput->size[0]*gradInput->size[1]);
+    dim3 threads(SOFTMAX_THREADS);
+
+    cunn_SoftMax_updateGradInput_kernel<<<blocks,threads,
+      0, THCState_getCurrentStream(state)>>>(THCudaTensor_data(state, gradInput),
+                                             THCudaTensor_data(state, output),
+                                             THCudaTensor_data(state, gradOutput),
+                                             gradInput->size[0]*gradInput->size[1], gradInput->size[2]);
   }
   else
     THError("vector or matrix expected");
