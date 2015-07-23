@@ -8,39 +8,8 @@
 #include <thrust/functional.h>
 #include <thrust/device_ptr.h>
 
-#include "utils.c"
+#include "utils.h"
 
-#include "ClassNLLCriterion.cu"
-#include "HardTanh.cu"
-#include "L1Cost.cu"
-#include "Tanh.cu"
-#include "Max.cu"
-#include "Min.cu"
-#include "LogSoftMax.cu"
-#include "SoftMax.cu"
-#include "TemporalConvolution.cu"
-#include "TemporalMaxPooling.cu"
-#include "SpatialConvolutionMM.cu"
-#include "SpatialSubSampling.cu"
-#include "SpatialMaxPooling.cu"
-#include "SpatialAveragePooling.cu"
-#include "SpatialAdaptiveMaxPooling.cu"
-#include "Square.cu"
-#include "Sqrt.cu"
-#include "MultiMarginCriterion.cu"
-#include "OneVsAllMultiMarginCriterion.cu"
-#include "OneVsAllNLLCriterion.cu"
-#include "MSECriterion.cu"
-#include "DistKLDivCriterion.cu"
-#include "Threshold.cu"
-#include "Sigmoid.cu"
-#include "AbsCriterion.cu"
-#include "Abs.cu"
-#include "SoftPlus.cu"
-#include "Exp.cu"
-#include "SpatialUpSamplingNearest.cu"
-#include "VolumetricConvolution.cu"
-#include "LogSigmoid.cu"
 
 LUA_EXTERNC DLL_EXPORT int luaopen_libcunn(lua_State *L);
 
@@ -74,10 +43,11 @@ int luaopen_libcunn(lua_State *L)
   cunn_DistKLDivCriterion_init(L);
   cunn_Abs_init(L);
   cunn_SoftPlus_init(L);
-  cunn_Exp_init(L);
   cunn_SpatialUpSamplingNearest_init(L);
   cunn_VolumetricConvolution_init(L);
   cunn_LogSigmoid_init(L);
+  cunn_PReLU_init(L);
+  cunn_LookupTable_init(L);
 
   return 1;
 }

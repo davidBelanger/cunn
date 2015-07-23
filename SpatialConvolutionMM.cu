@@ -1,18 +1,5 @@
 #include "utils.h"
-
-// CUDA: grid stride looping
-#define CUDA_KERNEL_LOOP(i, n)                        \
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; \
-      i < (n);                                       \
-      i += blockDim.x * gridDim.x)
-
-// Use 1024 threads per block, which requires cuda sm_2x or above
-const int CUDA_NUM_THREADS = 1024;
-
-// CUDA: number of blocks for threads.
-inline int GET_BLOCKS(const int N) {
-  return (N + CUDA_NUM_THREADS - 1) / CUDA_NUM_THREADS;
-}
+#include "common.h"
 
 // Kernel for fast unfold+copy
 // (borrowed from Caffe: https://github.com/BVLC/caffe/blob/master/src/caffe/layers/conv_layer.cu)
@@ -121,7 +108,8 @@ static int cunn_SpatialConvolutionMM_updateOutput(lua_State *L) {
   int kH = luaT_getfieldcheckint(L, 1, "kH");
   int nInputPlane = luaT_getfieldcheckint(L, 1, "nInputPlane");
   int nOutputPlane = luaT_getfieldcheckint(L, 1, "nOutputPlane");
-  int padding = luaT_getfieldcheckint(L, 1, "padding");
+  int padW = luaT_getfieldcheckint(L, 1, "padW");
+  int padH = luaT_getfieldcheckint(L, 1, "padH");
 
   THCudaTensor *weight = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "weight", "torch.CudaTensor");
   THCudaTensor *bias = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "bias", "torch.CudaTensor");
@@ -145,9 +133,12 @@ static int cunn_SpatialConvolutionMM_updateOutput(lua_State *L) {
 
   long inputWidth   = input->size[3];
   long inputHeight  = input->size[2];
-  long outputWidth  = (inputWidth + 2*padding - kW) / dW + 1;
-  long outputHeight = (inputHeight + 2*padding - kH) / dH + 1;
+  long outputWidth  = (inputWidth + 2*padW - kW) / dW + 1;
+  long outputHeight = (inputHeight + 2*padH - kH) / dH + 1;
 
+  if (outputWidth < 1 || outputHeight < 1)
+    THError("Given input size: (%dx%dx%d). Calculated output size: (%dx%dx%d). Output size is too small",
+        nInputPlane,inputHeight,inputWidth,nOutputPlane,outputHeight,outputWidth);
 
   // Batch size + input planes
   long batchSize = input->size[0];
@@ -200,7 +191,7 @@ static int cunn_SpatialConvolutionMM_updateOutput(lua_State *L) {
     im2col(
       THCState_getCurrentStream(state),
       THCudaTensor_data(state, input_n),
-      nInputPlane, inputHeight, inputWidth, kH, kW, padding, padding, dH, dW,
+      nInputPlane, inputHeight, inputWidth, kH, kW, padH, padW, dH, dW,
       THCudaTensor_data(state, columns)
     );
 
@@ -250,7 +241,8 @@ static int cunn_SpatialConvolutionMM_updateGradInput(lua_State *L) {
   int kH = luaT_getfieldcheckint(L, 1, "kH");
   int nInputPlane = luaT_getfieldcheckint(L, 1, "nInputPlane");
   int nOutputPlane = luaT_getfieldcheckint(L, 1, "nOutputPlane");
-  int padding = luaT_getfieldcheckint(L, 1, "padding");
+  int padW = luaT_getfieldcheckint(L, 1, "padW");
+  int padH = luaT_getfieldcheckint(L, 1, "padH");
 
   THCudaTensor *weight = (THCudaTensor *)luaT_getfieldcheckudata(L, 1, "weight", "torch.CudaTensor");
   THCudaTensor *gradColumns = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "finput", "torch.CudaTensor");
@@ -270,8 +262,8 @@ static int cunn_SpatialConvolutionMM_updateGradInput(lua_State *L) {
 
   long inputWidth   = input->size[3];
   long inputHeight  = input->size[2];
-  long outputWidth  = (inputWidth + 2*padding - kW) / dW + 1;
-  long outputHeight = (inputHeight + 2*padding - kH) / dH + 1;
+  long outputWidth  = (inputWidth + 2*padW - kW) / dW + 1;
+  long outputHeight = (inputHeight + 2*padH - kH) / dH + 1;
 
   // Batch size + input planes
   long batchSize = input->size[0];
@@ -283,14 +275,12 @@ static int cunn_SpatialConvolutionMM_updateGradInput(lua_State *L) {
   THCudaTensor_resize2d(state, gradColumns, nInputPlane*kW*kH, outputHeight*outputWidth);
 
   // Helpers
-  THCudaTensor *input_n = THCudaTensor_new(state);
   THCudaTensor *gradInput_n = THCudaTensor_new(state);
   THCudaTensor *gradOutput_n = THCudaTensor_new(state);
 
   // For each elt in batch, do:
   for (int elt = 0; elt < batchSize; elt ++) {
     // Matrix mulitply per sample:
-    THCudaTensor_select(state, input_n, input, 0, elt);
     THCudaTensor_select(state, gradInput_n, gradInput, 0, elt);
     THCudaTensor_select(state, gradOutput_n, gradOutput, 0, elt);
 
@@ -316,13 +306,12 @@ static int cunn_SpatialConvolutionMM_updateGradInput(lua_State *L) {
     col2im(
       THCState_getCurrentStream(state),
       THCudaTensor_data(state, gradColumns),
-      nInputPlane, inputHeight, inputWidth, kH, kW, padding, padding, dH, dW,
+      nInputPlane, inputHeight, inputWidth, kH, kW, padH, padW, dH, dW,
       THCudaTensor_data(state, gradInput_n)
     );
   }
 
   // Free
-  THCudaTensor_free(state, input_n);
   THCudaTensor_free(state, gradInput_n);
   THCudaTensor_free(state, gradOutput_n);
 
@@ -350,7 +339,8 @@ static int cunn_SpatialConvolutionMM_accGradParameters(lua_State *L) {
   int kH = luaT_getfieldcheckint(L, 1, "kH");
   int nInputPlane = luaT_getfieldcheckint(L, 1, "nInputPlane");
   int nOutputPlane = luaT_getfieldcheckint(L, 1, "nOutputPlane");
-  int padding = luaT_getfieldcheckint(L, 1, "padding");
+  int padW = luaT_getfieldcheckint(L, 1, "padW");
+  int padH = luaT_getfieldcheckint(L, 1, "padH");
   float scale = luaL_optnumber(L, 4, 1);
 
   THCudaTensor *gradWeight = (THCudaTensor *)luaT_getfieldcheckudata(L, 1, "gradWeight", "torch.CudaTensor");
@@ -372,8 +362,8 @@ static int cunn_SpatialConvolutionMM_accGradParameters(lua_State *L) {
 
   long inputWidth   = input->size[3];
   long inputHeight  = input->size[2];
-  long outputWidth  = (inputWidth + 2*padding - kW) / dW + 1;
-  long outputHeight = (inputHeight + 2*padding - kH) / dH + 1;
+  long outputWidth  = (inputWidth + 2*padW - kW) / dW + 1;
+  long outputHeight = (inputHeight + 2*padH - kH) / dH + 1;
 
   // Batch size + input planes
   long batchSize = input->size[0];
@@ -402,7 +392,7 @@ static int cunn_SpatialConvolutionMM_accGradParameters(lua_State *L) {
     im2col(
       THCState_getCurrentStream(state),
       THCudaTensor_data(state, input_n),
-      nInputPlane, inputHeight, inputWidth, kH, kW, padding, padding, dH, dW,
+      nInputPlane, inputHeight, inputWidth, kH, kW, padH, padW, dH, dW,
       THCudaTensor_data(state, columns)
     );
 
@@ -464,7 +454,7 @@ static const struct luaL_Reg cunn_SpatialConvolutionMM__ [] = {
   {NULL, NULL}
 };
 
-static void cunn_SpatialConvolutionMM_init(lua_State *L)
+void cunn_SpatialConvolutionMM_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
   luaT_registeratname(L, cunn_SpatialConvolutionMM__, "nn");
