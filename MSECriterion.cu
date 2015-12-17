@@ -2,6 +2,7 @@
 
 #include <thrust/fill.h>
 #include <thrust/functional.h>
+#include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 #include <thrust/inner_product.h>
 
@@ -22,6 +23,8 @@ static int cunn_MSECriterion_updateOutput(lua_State *L)
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
   THCudaTensor *target = (THCudaTensor*)luaT_checkudata(L, 3, "torch.CudaTensor");
+  THAssert(THCudaTensor_checkGPU(state, 2, input, target));
+
   int sizeAverage = luaT_getfieldcheckboolean(L, 1, "sizeAverage");
   luaL_argcheck(L, THCudaTensor_nElement(state, input) == THCudaTensor_nElement(state, target), 2,
                 "input and target need to have the same number of elements");
@@ -72,6 +75,7 @@ static int cunn_MSECriterion_updateGradInput(lua_State *L)
   THCudaTensor *gradInput = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "gradInput", "torch.CudaTensor");
   luaL_argcheck(L, THCudaTensor_nElement(state, input) == THCudaTensor_nElement(state, target), 2,
                 "input and target need to have the same number of elements");
+  THAssert(THCudaTensor_checkGPU(state, 3, input, target, gradInput));
 
   long size = THCudaTensor_nElement(state, input);
   float norm = (sizeAverage ? 2./size : 2.);
@@ -161,11 +165,12 @@ static int cunn_MSECriterion_updateOutput2(lua_State *L)
   dim3 blocks(1);
   dim3 threads(MSECRITERION_THREADS);
 
-  cunn_MSECriterion_updateOutput_kernel<<<blocks,threads>>>(output->data,
-                                                            THCudaTensor_data(state, input),
-                                                            THCudaTensor_data(state, target),
-                                                            1, size,
-                                                            sizeAverage);
+  cunn_MSECriterion_updateOutput_kernel<<<blocks,threads,
+    0, THCState_getCurrentStream(state)>>>(output->data,
+                                           THCudaTensor_data(state, input),
+                                           THCudaTensor_data(state, target),
+                                           1, size,
+                                           sizeAverage);
 
   lua_pushnumber(L, THCudaStorage_get(state, output, 0));
 
@@ -202,11 +207,12 @@ static int cunn_MSECriterion_updateGradInput2(lua_State *L)
   dim3 blocks(1);
   dim3 threads(MSECRITERION_THREADS);
 
-  cunn_MSECriterion_updateGradInput_kernel<<<blocks,threads>>>(THCudaTensor_data(state, gradInput),
-                                                               THCudaTensor_data(state, input),
-                                                               THCudaTensor_data(state, target),
-                                                               norm,
-                                                               1, size);
+  cunn_MSECriterion_updateGradInput_kernel<<<blocks,threads,
+    0, THCState_getCurrentStream(state)>>>(THCudaTensor_data(state, gradInput),
+                                           THCudaTensor_data(state, input),
+                                           THCudaTensor_data(state, target),
+                                           norm,
+                                           1, size);
 
   cudaError errcode = cudaGetLastError();
   if(errcode != cudaSuccess)
@@ -226,7 +232,7 @@ static const struct luaL_Reg cunn_MSECriterion__ [] = {
   {NULL, NULL}
 };
 
-static void cunn_MSECriterion_init(lua_State *L)
+void cunn_MSECriterion_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
   luaT_registeratname(L, cunn_MSECriterion__, "nn");

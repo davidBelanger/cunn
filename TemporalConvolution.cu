@@ -20,6 +20,7 @@ static int cunn_TemporalConvolution_updateOutput(lua_State *L)
   int dimS = 0; // sequence dimension
   int dimF = 1; // feature dimension
 
+  THAssert(THCudaTensor_checkGPU(state, 4, input, output, weight, bias));
   luaL_argcheck(L, input->nDimension == 2 || input->nDimension == 3, 2, "2D or 3D(batch mode) tensor expected");
 
   if (input->nDimension == 3)
@@ -150,6 +151,8 @@ static int cunn_TemporalConvolution_updateGradInput(lua_State *L)
   long k, i;
 
   int dimS = 0; // sequence dimension
+
+  THAssert(THCudaTensor_checkGPU(state, 4, input, gradOutput, weight, gradInput));
 
   if (gradOutput->nDimension == 3)
   {
@@ -357,7 +360,7 @@ static const struct luaL_Reg cunn_TemporalConvolution__ [] = {
   {NULL, NULL}
 };
 
-static void cunn_TemporalConvolution_init(lua_State *L)
+void cunn_TemporalConvolution_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
   luaT_registeratname(L, cunn_TemporalConvolution__, "nn");

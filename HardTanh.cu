@@ -1,15 +1,22 @@
 #include "utils.h"
+#include "THCApply.cuh"
 
 struct hardtanhupdateOutput_functor
 {
-  __host__ __device__ float operator()(const float& input) const
+  const float max_val_;
+  const float min_val_;
+
+  hardtanhupdateOutput_functor(float min_val, float max_val): min_val_(min_val),
+                                                              max_val_(max_val) {}
+
+  __device__ void operator()(float* output, const float* input) const
   {
-    if(input < -1)
-      return -1;
-    else if(input <= 1)
-      return input;
+    if(*input < min_val_)
+      *output = min_val_;
+    else if(*input <= max_val_)
+      *output = *input;
     else
-      return 1;
+      *output = max_val_;
   }
 };
 
@@ -17,29 +24,30 @@ static int cunn_HardTanh_updateOutput(lua_State *L)
 {
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
+  float min_val = luaT_getfieldchecknumber(L, 1, "min_val");
+  float max_val = luaT_getfieldchecknumber(L, 1, "max_val");
   THCudaTensor *output = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "output", "torch.CudaTensor");
-  long size = THCudaTensor_nElement(state, input);
-
-  input = THCudaTensor_newContiguous(state, input);
-
+  THAssert(THCudaTensor_checkGPU(state, 2, input, output));
   THCudaTensor_resizeAs(state, output, input);
-
-  thrust::device_ptr<float> output_data(THCudaTensor_data(state, output));
-  thrust::device_ptr<float> input_data(THCudaTensor_data(state, input));
-  thrust::transform(input_data, input_data+size, output_data, hardtanhupdateOutput_functor());
-
-  THCudaTensor_free(state, input);
+  THCudaTensor_pointwiseApply2(state, output, input,
+                               hardtanhupdateOutput_functor(min_val, max_val));
   return 1;
 }
 
 struct hardtanhupdateGradInput_functor
 {
-  __host__ __device__ float operator()(const float& input, const float& gradOutput) const
+  const float max_val_;
+  const float min_val_;
+
+  hardtanhupdateGradInput_functor(float min_val, float max_val): min_val_(min_val),
+                                                                 max_val_(max_val) {}
+
+  __device__ void operator()(float* gradInput, const float* input, const float* gradOutput) const
   {
-    if(input < -1 || input > 1)
-      return 0;
+    if(*input < min_val_ || *input > max_val_)
+      *gradInput = 0;
     else
-      return gradOutput;
+      *gradInput = *gradOutput;
   }
 };
 
@@ -47,22 +55,15 @@ static int cunn_HardTanh_updateGradInput(lua_State *L)
 {
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
+  float min_val = luaT_getfieldchecknumber(L, 1, "min_val");
+  float max_val = luaT_getfieldchecknumber(L, 1, "max_val");
   THCudaTensor *gradOutput = (THCudaTensor*)luaT_checkudata(L, 3, "torch.CudaTensor");
   THCudaTensor *gradInput = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "gradInput", "torch.CudaTensor");
-  long size = THCudaTensor_nElement(state, input);
-
-  input = THCudaTensor_newContiguous(state, input);
-  gradOutput = THCudaTensor_newContiguous(state, gradOutput);
+  THAssert(THCudaTensor_checkGPU(state, 3, input, gradOutput, gradInput));
 
   THCudaTensor_resizeAs(state, gradInput, input);
-
-  thrust::device_ptr<float> input_data(THCudaTensor_data(state, input));
-  thrust::device_ptr<float> gradOutput_data(THCudaTensor_data(state, gradOutput));
-  thrust::device_ptr<float> gradInput_data(THCudaTensor_data(state, gradInput));
-  thrust::transform(input_data, input_data+size, gradOutput_data, gradInput_data, hardtanhupdateGradInput_functor());
-
-  THCudaTensor_free(state, gradOutput);
-  THCudaTensor_free(state, input);
+  THCudaTensor_pointwiseApply3(state, gradInput, input, gradOutput,
+                               hardtanhupdateGradInput_functor(min_val, max_val));
   return 1;
 }
 
@@ -72,7 +73,7 @@ static const struct luaL_Reg cunn_HardTanh__ [] = {
   {NULL, NULL}
 };
 
-static void cunn_HardTanh_init(lua_State *L)
+void cunn_HardTanh_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
   luaT_registeratname(L, cunn_HardTanh__, "nn");

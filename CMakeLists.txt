@@ -16,19 +16,26 @@ ENDIF()
 
 FIND_PACKAGE(CUDA 4.0 REQUIRED)
 
-LIST(APPEND CUDA_NVCC_FLAGS "-arch=sm_20")
+# Detect CUDA architecture and get best NVCC flags
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindCudaArch.cmake)
+SELECT_NVCC_ARCH_FLAGS(NVCC_FLAGS_EXTRA)
+LIST(APPEND CUDA_NVCC_FLAGS ${NVCC_FLAGS_EXTRA})
 
 INCLUDE_DIRECTORIES("${Torch_INSTALL_INCLUDE}/THC")
 LINK_DIRECTORIES("${Torch_INSTALL_LIB}")
 
-SET(src-cuda init.cu)
-SET(luasrc init.lua test.lua)
+FILE(GLOB src-cuda *.cu)
+
+FILE(GLOB luasrc *.lua)
 
 CUDA_ADD_LIBRARY(cunn MODULE ${src-cuda})
 TARGET_LINK_LIBRARIES(cunn luaT THC TH)
 IF(APPLE)
   SET_TARGET_PROPERTIES(cunn PROPERTIES
     LINK_FLAGS "-undefined dynamic_lookup")
+ENDIF()
+IF(LUALIB)
+  TARGET_LINK_LIBRARIES(cunn ${LUALIB})
 ENDIF()
 
 ### Torch packages supposes libraries prefix is "lib"

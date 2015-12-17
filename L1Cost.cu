@@ -1,5 +1,6 @@
 #include "utils.h"
 
+#include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 #include <thrust/transform.h>
 
@@ -17,7 +18,7 @@ static int cunn_L1Cost_updateOutput(lua_State *L)
 {
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
-
+  THAssert(THCudaTensor_checkGPU(state, 1, input));
   float sum;
   long size = THCudaTensor_nElement(state, input);
   input = THCudaTensor_newContiguous(state, input);
@@ -53,7 +54,7 @@ static int cunn_L1Cost_updateGradInput(lua_State *L)
   THCState *state = getCutorchState(L);
   THCudaTensor *input = (THCudaTensor*)luaT_checkudata(L, 2, "torch.CudaTensor");
   THCudaTensor *gradInput = (THCudaTensor*)luaT_getfieldcheckudata(L, 1, "gradInput", "torch.CudaTensor");
-
+  THAssert(THCudaTensor_checkGPU(state, 2, input, gradInput));
   long size = THCudaTensor_nElement(state, input);
 
   input = THCudaTensor_newContiguous(state, input);
@@ -74,7 +75,7 @@ static const struct luaL_Reg cunn_L1Cost__ [] = {
   {NULL, NULL}
 };
 
-static void cunn_L1Cost_init(lua_State *L)
+void cunn_L1Cost_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
   luaT_registeratname(L, cunn_L1Cost__, "nn");
